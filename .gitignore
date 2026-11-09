@@ -1,10 +1,68 @@
-# Python-generated files
+# ===== Python =====
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
+*.so
+.Python
 build/
 dist/
-wheels/
-*.egg-info
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
 
-# Virtual environments
-.venv
+# ===== 虚拟环境 =====
+.venv/
+venv/
+env/
+
+# ===== 环境变量与密钥（绝不能提交）=====
+.env
+.env.*
+!.env.example
+
+# ===== 数据库（SQLite 文件不入库）=====
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# ===== Alembic 运行时产物（迁移脚本要提交，临时文件不提交）=====
+# 注意：alembic/versions/ 下的迁移脚本必须提交，不要忽略
+# 下面只忽略可能的临时/备份文件
+alembic/versions/*.bak
+
+# ===== 测试与覆盖率 =====
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# ===== 类型检查与缓存 =====
+.mypy_cache/
+.ruff_cache/
+.pyright/
+
+# ===== 日志 =====
+*.log
+logs/
+
+# ===== AI / 调试临时文件 =====
+# 本地调试时可能把 AI 返回的 JSON 落盘，别提交
+debug_*.json
+ai_output_*.json
+
+# ===== IDE / 编辑器 =====
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ===== 操作系统 =====
+.DS_Store
+Thumbs.db
+desktop.ini

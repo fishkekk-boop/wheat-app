@@ -1,3 +1,6 @@
+# src/wheat_app/features/auth/schemas.py
+"""Auth：请求/响应模型"""
+
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
