@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     workers: int = 1
+    access_token_expire_minutes: int = 15
+    algorithm: str
+    refresh_token_expire_minutes: int = 60 * 24 * 7
 
     # 配置如何从环境中读取
     model_config = SettingsConfigDict(

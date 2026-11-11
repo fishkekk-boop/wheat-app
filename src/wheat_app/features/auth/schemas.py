@@ -12,7 +12,7 @@ from wheat_app.shared.constraints import StrippedStr
 from .models import UserStatus
 
 # 用户名称
-Username = Annotated[
+Account = Annotated[
     StrippedStr, Field(min_length=3, max_length=20, pattern=r"^[a-zA-Z0-9_]+$")
 ]
 
@@ -23,14 +23,14 @@ Password = Annotated[str, Field(min_length=8, max_length=128)]
 Nickname = Annotated[StrippedStr, Field(min_length=1, max_length=30)]
 
 
-class RegisterRequest(BaseModel):
-    username: Username
+class PasswordRegisterRequest(BaseModel):
+    account: Account
     password: Password
     nickname: Nickname | None = None
 
 
 class LoginRequest(BaseModel):
-    username: Username
+    account: Account
     password: Password
 
 
@@ -54,3 +54,10 @@ class UserOut(BaseModel):
     status: UserStatus
     created_at: datetime
     last_login_at: datetime | None
+
+
+class RegisterResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    user: UserOut

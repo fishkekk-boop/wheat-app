@@ -56,8 +56,6 @@ class AuthIdentity(BaseModel):
 
     @model_validator(mode="after")
     def _password_requires_secret(self) -> "AuthIdentity":
-        if self.provider == AuthProvider.PASSWORD and not (
-            self.secret_hash and self.secret_hash.strip()
-        ):
+        if self.provider == AuthProvider.PASSWORD and not self.secret_hash:
             raise ValueError("password provider 必须提供 secret_hash")
         return self
