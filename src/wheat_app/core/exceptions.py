@@ -16,7 +16,10 @@ class AppError(Exception):
         super().__init__(self.message)
 
     def to_dict(self) -> dict:
-        return {"error_code": self.error_code, "message": self.default_message}
+        return {
+            "error_code": self.error_code,
+            "message": self.message or self.default_message,
+        }
 
 
 # ========== 业务异常：可预期，映射 4xx ==========
@@ -40,6 +43,15 @@ class AlreadyExists(DomainError):
     http_status = 409
 
 
+class ConflictError(AlreadyExists):
+    """唯一约束冲突：entity = 冲突实体 identifier = 冲突唯一键"""
+
+    def __init__(self, entity: str, identifier: str) -> None:
+        self.entity = entity
+        self.identifier = identifier
+        super().__init__(f"{entity} 已存在：{identifier}")
+
+
 # ========== 基础设施异常：技术故障，映射 5xx ==========
 
 
@@ -49,16 +61,10 @@ class InfrastructureError(AppError):
     http_status = 500
 
     def to_dict(self) -> dict:
-        return {"error_code": self.error_code, "message": self.default_message}
-
-
-class ConflictError(InfrastructureError):
-    """唯一约束冲突：entity = 冲突实体 identifier = 冲突唯一键"""
-
-    def __init__(self, entity: str, identifier: str) -> None:
-        self.entity = entity
-        self.identifier = identifier
-        super().__init__(f"{entity} 已存在：{identifier}")
+        return {
+            "error_code": self.error_code,
+            "message": self.message or self.default_message,
+        }
 
 
 class EntityNotFound(InfrastructureError):

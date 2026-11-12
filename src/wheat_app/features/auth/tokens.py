@@ -29,7 +29,7 @@ def create_refresh_token(user_id: UUID) -> str:
         "sub": str(user_id),
         "type": "refresh",
         "iat": now,
-        "exp": now + timedelta(days=settings.refresh_token_expire_minutes),
+        "exp": now + timedelta(minutes=settings.refresh_token_expire_minutes),
         "jti": uuid4().hex,
     }
     return jwt.encode(

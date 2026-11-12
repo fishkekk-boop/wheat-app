@@ -4,10 +4,15 @@
 import secrets
 
 from wheat_app.core.exceptions import ConflictError
-from wheat_app.core.security import hash_secret
+from wheat_app.core.security import hash_secret_async
 from wheat_app.features.auth.exceptions import IdentityAlreadyTaken
 from wheat_app.features.auth.models import AuthProvider, User
 from wheat_app.features.auth.repository import AuthRepository
+from wheat_app.features.auth.schemas import (
+    RegisterResponse,
+    UserOut,
+)
+from wheat_app.features.auth.tokens import create_access_token, create_refresh_token
 
 
 class AuthService:
@@ -18,18 +23,6 @@ class AuthService:
 
     def _generate_default_nickname(self) -> str:
         return f"{self._DEFAULT_NICKNAME_PREFIX}_{secrets.token_hex(3)}"
-
-    async def register_with_password(
-        self, *, account: str, password: str, nickname: str | None = None
-    ) -> User:
-        user = await self._create_account(
-            provider=AuthProvider.PASSWORD,
-            identifier=account,
-            nickname=nickname or self._generate_default_nickname(),
-            secret_hash=hash_secret(password),
-            is_verified=True,
-        )
-        return user
 
     async def _create_account(
         self,
@@ -50,3 +43,22 @@ class AuthService:
             )
         except ConflictError as e:
             raise IdentityAlreadyTaken() from e
+
+    def build_register_response(self, user: User) -> RegisterResponse:
+        return RegisterResponse(
+            access_token=create_access_token(user.id),
+            refresh_token=create_refresh_token(user.id),
+            user=UserOut.model_validate(user),
+        )
+
+    async def register_with_password(
+        self, *, account: str, password: str, nickname: str | None = None
+    ) -> User:
+        user = await self._create_account(
+            provider=AuthProvider.PASSWORD,
+            identifier=account,
+            nickname=nickname or self._generate_default_nickname(),
+            secret_hash=await hash_secret_async(password),
+            is_verified=True,  # 密码注册视为已验证
+        )
+        return user

@@ -2,6 +2,8 @@ import uvicorn
 from fastapi import FastAPI
 
 from wheat_app.config import Env, Settings, get_settings
+from wheat_app.core.exception_handlers import register_exception_handlers
+from wheat_app.features.auth.repository import InMemoryAuthRepository
 from wheat_app.features.auth.router import router as auth_router
 
 
@@ -10,6 +12,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title=settings.app_name, debug=settings.debug)
     # 无法依赖注入时需要引用配置，如：中间件、全局异常处理器...
     app.state.settings = settings
+    # 每个 app 独立一个 repo（内存版专用），防止测试数据污染
+    app.state.auth_repo = InMemoryAuthRepository()
+    # 注册全局异常处理器
+    register_exception_handlers(app)
     app.include_router(auth_router)
     return app
 

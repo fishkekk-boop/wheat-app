@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from wheat_app.shared.constraints import StrippedStr
+from wheat_app.shared.schema import ORMModel
 
 from .models import UserStatus
 
@@ -44,7 +45,7 @@ class TokenPair(BaseModel):
     token_type: str = "bearer"
 
 
-class UserOut(BaseModel):
+class UserOut(ORMModel):
     id: UUID
     nickname: str
     avatar_url: str | None

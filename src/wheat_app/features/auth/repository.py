@@ -62,7 +62,7 @@ class AuthRepository(Protocol):
     #     ...
 
 
-class InMemoryAuthRepository(AuthRepository):
+class InMemoryAuthRepository:
     def __init__(self) -> None:
         self._users: dict[UUID, User] = {}
         self._identities: dict[UUID, AuthIdentity] = {}
