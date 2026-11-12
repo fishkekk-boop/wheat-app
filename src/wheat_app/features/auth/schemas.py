@@ -1,3 +1,6 @@
+# src/wheat_app/features/auth/schemas.py
+"""Auth：请求/响应模型"""
+
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
@@ -5,11 +8,12 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from wheat_app.shared.constraints import StrippedStr
+from wheat_app.shared.schema import ORMModel
 
 from .models import UserStatus
 
 # 用户名称
-Username = Annotated[
+Account = Annotated[
     StrippedStr, Field(min_length=3, max_length=20, pattern=r"^[a-zA-Z0-9_]+$")
 ]
 
@@ -20,14 +24,14 @@ Password = Annotated[str, Field(min_length=8, max_length=128)]
 Nickname = Annotated[StrippedStr, Field(min_length=1, max_length=30)]
 
 
-class RegisterRequest(BaseModel):
-    username: Username
+class PasswordRegisterRequest(BaseModel):
+    account: Account
     password: Password
     nickname: Nickname | None = None
 
 
 class LoginRequest(BaseModel):
-    username: Username
+    account: Account
     password: Password
 
 
@@ -41,7 +45,7 @@ class TokenPair(BaseModel):
     token_type: str = "bearer"
 
 
-class UserOut(BaseModel):
+class UserOut(ORMModel):
     id: UUID
     nickname: str
     avatar_url: str | None
@@ -51,3 +55,10 @@ class UserOut(BaseModel):
     status: UserStatus
     created_at: datetime
     last_login_at: datetime | None
+
+
+class RegisterResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    user: UserOut
