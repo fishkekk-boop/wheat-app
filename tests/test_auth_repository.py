@@ -63,6 +63,7 @@ async def test_duplicate_identifier_raises_conflict(repo):
         provider=AuthProvider.PASSWORD,
         identifier="alice",
         secret_hash="hashed-1",
+        nickname="Alice",
     )
 
     # 换一个用户、但登录标识相同 → 必须冲突
@@ -71,6 +72,7 @@ async def test_duplicate_identifier_raises_conflict(repo):
             provider=AuthProvider.PASSWORD,
             identifier="alice",
             secret_hash="hashed-2",
+            nickname="Alice2",
         )
 
     # 冲突后不能留下半条数据：用户表里应该只有 1 个 alice
@@ -82,10 +84,10 @@ async def test_duplicate_identifier_raises_conflict(repo):
 async def test_get_identities_by_user_id_isolated(repo):
     """按用户查登录方式时不能串号。"""
     alice = await repo.create_user_with_identity(
-        provider=AuthProvider.PASSWORD, identifier="alice", secret_hash="h1"
+        provider=AuthProvider.PASSWORD, identifier="alice", secret_hash="h1", nickname="Alice"
     )
     bob = await repo.create_user_with_identity(
-        provider=AuthProvider.PASSWORD, identifier="bob", secret_hash="h2"
+        provider=AuthProvider.PASSWORD, identifier="bob", secret_hash="h2", nickname="Bob"
     )
 
     # alice 再绑一个（比如以后加手机号登录）

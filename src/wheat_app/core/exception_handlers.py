@@ -1,11 +1,11 @@
-import logging
-
+import structlog
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from wheat_app.core.exceptions import AppError, DomainError, InfrastructureError
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -21,30 +21,52 @@ def register_exception_handlers(app: FastAPI) -> None:
         exc: InfrastructureError,
     ) -> JSONResponse:
         logger.exception(
-            "基础设施异常: %s %s -> %s",
-            request.method,
-            request.url.path,
-            exc,
+            "infra_error",
+            method=request.method,
+            path=request.url.path,
+            error=str(exc),
         )
         return JSONResponse(status_code=exc.http_status, content=exc.to_dict())
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         logger.exception(
-            "未分类应用异常: %s %s -> %s",
-            request.method,
-            request.url.path,
-            exc,
+            "unclassified_app_error",
+            method=request.method,
+            path=request.url.path,
+            error=str(exc),
         )
         return JSONResponse(status_code=exc.http_status, content=exc.to_dict())
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(
+        request: Request,
+        exc: RequestValidationError,
+    ) -> JSONResponse:
+        # 只返回"哪个字段、什么错误"，不回显原始输入（防密码泄露）
+        errors = [
+            {
+                "field": ".".join(str(loc) for loc in e["loc"] if loc != "body"),
+                "message": e["msg"],
+            }
+            for e in exc.errors()
+        ]
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error_code": "VALIDATION_ERROR",
+                "message": "请求参数校验失败",
+                "errors": errors,
+            },
+        )
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request, exc):
         logger.exception(
-            "未捕获异常: %s %s -> %s",
-            request.method,
-            request.url.path,
-            exc,
+            "unhandled_exception",
+            method=request.method,
+            path=request.url.path,
+            error=str(exc),
         )
         return JSONResponse(
             status_code=500,

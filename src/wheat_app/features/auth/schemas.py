@@ -18,7 +18,7 @@ Account = Annotated[
 ]
 
 # 密码
-Password = Annotated[str, Field(min_length=8, max_length=128)]
+# Password = Annotated[str, Field(min_length=8, max_length=128)]
 
 # 用户昵称
 Nickname = Annotated[StrippedStr, Field(min_length=1, max_length=30)]
@@ -26,13 +26,13 @@ Nickname = Annotated[StrippedStr, Field(min_length=1, max_length=30)]
 
 class PasswordRegisterRequest(BaseModel):
     account: Account
-    password: Password
+    password: Annotated[str, Field(min_length=8, max_length=128)]
     nickname: Nickname | None = None
 
 
-class LoginRequest(BaseModel):
+class PasswordLoginRequest(BaseModel):
     account: Account
-    password: Password
+    password: Annotated[str, Field(min_length=1, max_length=128)]
 
 
 class RefreshRequest(BaseModel):
@@ -57,7 +57,7 @@ class UserOut(ORMModel):
     last_login_at: datetime | None
 
 
-class RegisterResponse(BaseModel):
+class AuthResponse(ORMModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"

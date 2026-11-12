@@ -31,6 +31,12 @@ class DomainError(AppError):
     http_status = 400
 
 
+class InvalidCredentials(DomainError):
+    error_code = "INVALID_CREDENTIALS"
+    default_message = "无效凭据"
+    http_status = 401
+
+
 class NotFound(DomainError):
     error_code = "NOT_FOUND"
     default_message = "资源不存在"
@@ -52,6 +58,13 @@ class ConflictError(AlreadyExists):
         super().__init__(f"{entity} 已存在：{identifier}")
 
 
+class EntityNotFound(NotFound):
+    def __init__(self, entity: str, entity_id: UUID | str) -> None:
+        self.entity = entity
+        self.entity_id = entity_id
+        super().__init__(f"{entity} 不存在: {entity_id}")
+
+
 # ========== 基础设施异常：技术故障，映射 5xx ==========
 
 
@@ -65,10 +78,3 @@ class InfrastructureError(AppError):
             "error_code": self.error_code,
             "message": self.message or self.default_message,
         }
-
-
-class EntityNotFound(InfrastructureError):
-    def __init__(self, entity: str, entity_id: UUID | str) -> None:
-        self.entity = entity
-        self.entity_id = entity_id
-        super().__init__(f"{entity} 不存在: {entity_id}")
