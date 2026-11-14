@@ -52,7 +52,7 @@ def create_refresh_token(user_id: UUID) -> str:
     )
 
 
-def decode_token(token: str, expected_type) -> dict:
+def decode_token(token: str, expected_type: str) -> dict:
     settings = get_settings()
     try:
         payload = jwt.decode(
@@ -60,7 +60,6 @@ def decode_token(token: str, expected_type) -> dict:
             key=settings.secret_key.get_secret_value(),
             algorithms=[settings.algorithm],
         )
-        print(payload)
     except InvalidTokenError:
         logger.warning("decode_failed", reason="jwt decode failed")
         raise

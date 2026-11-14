@@ -15,7 +15,7 @@ class Env(StrEnum):
     PROD = "prod"
 
 
-_env_file = f".env.{os.getenv('APP_ENV', 'dev')}"
+_ENV_FILE = f".env.{os.getenv('APP_ENV', 'dev')}"
 
 
 class Settings(BaseSettings):
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
 
     # 配置如何从环境中读取
     model_config = SettingsConfigDict(
-        env_file=(".env", _env_file),
+        env_file=(".env", _ENV_FILE),
         env_file_encoding="utf-8",
         extra="ignore",  # 忽略未定义的环境变量
     )

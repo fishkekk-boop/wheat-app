@@ -29,7 +29,7 @@ project-root/
 │       ├── core/              # 共享基础设施（跨功能，与业务无关）
 │       │   ├── database.py            # Engine、Session 工厂、Base
 │       │   ├── security.py            # 密码哈希、JWT 签发/验证
-│       │   ├── dependencies.py        # 全局依赖：get_db、分页、当前用户
+│       │   ├── dependencies.py        # 全局依赖：get_db、分页
 │       │   ├── exceptions.py          # 基础异常类与全局异常处理器
 │       │   ├── middleware.py          # CORS、请求 ID、日志等
 │       │   └── pagination.py          # 共享分页工具

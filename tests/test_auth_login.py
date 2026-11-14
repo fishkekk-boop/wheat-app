@@ -196,3 +196,16 @@ def test_orphan_identity_still_returns_generic_401(client, account):
     assert r.status_code == 401
     assert r.json()["error_code"] == "INVALID_CREDENTIALS"
     assert r.json()["message"] == "用户名或密码错误"
+
+
+def test_login_form_endpoint_for_swagger(client, account):
+    """Swagger 的 Authorize 按钮走 form 表单，必须和 JSON 登录行为一致。"""
+    _register(client, **account)
+
+    r = client.post(
+        "/auth/login/password/form",
+        data={"username": account["account"], "password": account["password"]},
+    )
+
+    assert r.status_code == 200
+    assert "access_token" in r.json()

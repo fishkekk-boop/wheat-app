@@ -17,20 +17,22 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login/password/form")
 
 
 # 调用方是 async def 时，对verify_password / get_password_hash函数调用会阻塞事件循环
-def verify_password(plain_password, hashed_password) -> bool:
+def verify_password(plain_password: str, hashed_password: str) -> bool:
     """对密码和哈希后的值进行比对"""
     return _password_hash.verify(plain_password, hashed_password)
 
 
-def hash_secret(password: str) -> str:
+def hash_password(password: str) -> str:
     """对密码进行哈希并返回结果"""
     return _password_hash.hash(password)
 
 
 # 包装同步函数至异步版本，将哈希计算卸载至线程池
-async def hash_secret_async(password: str) -> str:
-    return await asyncio.to_thread(hash_secret, password)
+async def hash_password_async(password: str) -> str:
+    """argon2 是 CPU 密集操作，丢到线程池，避免阻塞事件循环。"""
+    return await asyncio.to_thread(hash_password, password)
 
 
-async def verify_password_async(plain: str, hashed: str) -> bool:
-    return await asyncio.to_thread(verify_password, plain, hashed)
+async def verify_password_async(plain_password: str, hashed_password: str) -> bool:
+    """校验密码；同样走线程池。"""
+    return await asyncio.to_thread(verify_password, plain_password, hashed_password)
