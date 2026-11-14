@@ -12,16 +12,16 @@ from wheat_app.shared.schema import ORMModel
 
 from .models import UserStatus
 
-# 用户名称
+# 用户账号
 Account = Annotated[
     StrippedStr, Field(min_length=3, max_length=20, pattern=r"^[a-zA-Z0-9_]+$")
 ]
 
-# 密码
-# Password = Annotated[str, Field(min_length=8, max_length=128)]
-
 # 用户昵称
 Nickname = Annotated[StrippedStr, Field(min_length=1, max_length=30)]
+
+
+# ----- 请求 -----
 
 
 class PasswordRegisterRequest(BaseModel):
@@ -39,13 +39,15 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
-class TokenPair(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
+# ----- 响应 -----
+class PublicUserOut(ORMModel):
+    nickname: str
+    avatar_url: str | None
+    bio: str | None
+    status: UserStatus
 
 
-class UserOut(ORMModel):
+class PrivateUserOut(PublicUserOut):
     id: UUID
     nickname: str
     avatar_url: str | None
@@ -61,4 +63,10 @@ class AuthResponse(ORMModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
-    user: UserOut
+    user: PrivateUserOut
+
+
+class TokenPair(ORMModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"

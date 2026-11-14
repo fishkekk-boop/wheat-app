@@ -37,6 +37,12 @@ class InvalidCredentials(DomainError):
     http_status = 401
 
 
+class AuthenticationError(DomainError):
+    error_code = "INVALID_CREDENTIALS"
+    default_message = "Token"
+    http_status = 401
+
+
 class NotFound(DomainError):
     error_code = "NOT_FOUND"
     default_message = "资源不存在"

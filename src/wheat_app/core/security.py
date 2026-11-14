@@ -3,6 +3,7 @@
 
 import asyncio
 
+from fastapi.security import OAuth2PasswordBearer
 from pwdlib import PasswordHash
 
 # 创建密码哈希器实例：Arogn2id 算法
@@ -10,6 +11,9 @@ _password_hash = PasswordHash.recommended()
 
 # 虚拟哈希，用户不存在时用虚拟值进行哈希比对，防御“时序攻击”
 DUMMY_HASH = _password_hash.hash("dummypassword")
+
+# 读取请求头的依赖注入
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login/password/form")
 
 
 # 调用方是 async def 时，对verify_password / get_password_hash函数调用会阻塞事件循环
