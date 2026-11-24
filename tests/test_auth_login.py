@@ -28,6 +28,7 @@ USER_KEYS = {
     "email",
     "phone",
     "status",
+    "role",
     "created_at",
     "last_login_at",
 }

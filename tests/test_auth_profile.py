@@ -21,7 +21,7 @@ REGISTER_URL = "/auth/register/password"
 ME_URL = "/auth/users/me"
 REFRESH_URL = "/auth/token/refresh"
 
-PUBLIC_KEYS = {"nickname", "avatar_url", "bio", "status"}
+PUBLIC_KEYS = {"nickname", "avatar_url", "bio", "status", "role"}
 PRIVATE_KEYS = {
     "id",
     "nickname",
@@ -30,6 +30,7 @@ PRIVATE_KEYS = {
     "email",
     "phone",
     "status",
+    "role",
     "created_at",
     "last_login_at",
 }

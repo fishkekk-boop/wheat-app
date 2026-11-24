@@ -10,21 +10,9 @@ from uuid import uuid4
 
 import pytest
 
-from wheat_app.config import get_settings
-from wheat_app.core.database import create_engine_and_session_factory
 from wheat_app.core.exceptions import ConflictError, EntityNotFound
 from wheat_app.features.auth.models import AuthProvider
 from wheat_app.features.auth.repository_sql import SQLAlchemyAuthRepository
-
-
-@pytest.fixture
-async def factory():
-    """每个用例一套独立的 engine / session 工厂，用完释放。"""
-    engine, session_factory = create_engine_and_session_factory(get_settings())
-    try:
-        yield session_factory
-    finally:
-        await engine.dispose()
 
 
 # ---------------------------------------------------------------- 用例 1
@@ -120,12 +108,11 @@ async def test_get_identities_by_user_id_isolated(factory):
             secret_hash="h2",
             nickname="Bob",
         )
-        # alice 再绑一个（比如以后加手机号登录）
+        # alice 再绑一个不同 provider（同一个 provider 只能有一条）
         await repo.add_identity(
             user_id=alice.id,
-            provider=AuthProvider.PASSWORD,
+            provider=AuthProvider.EMAIL,
             identifier="alice@example.com",
-            secret_hash="h3",
         )
         await session.commit()
 
