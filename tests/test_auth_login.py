@@ -51,16 +51,6 @@ def _login(client, account="alice", password="pass12345"):
     return client.post(LOGIN_URL, json={"account": account, "password": password})
 
 
-async def _set_status(app, account: str, status: UserStatus) -> None:
-    repo = app.state.auth_repo
-    identity = await repo.get_identity(AuthProvider.PASSWORD, account)
-    assert identity is not None
-    user = await repo.get_user_by_id(identity.user_id)
-    assert user is not None
-    user.status = status
-    await repo.update_user(user)
-
-
 # ---------------------------------------------------------------- 正常路径
 
 
@@ -138,9 +128,9 @@ def test_unknown_account_and_wrong_password_are_indistinguishable(client, accoun
     assert wrong_password.json() == unknown_account.json()
 
 
-def test_disabled_user_cannot_login(client, account):
+def test_disabled_user_cannot_login(client, db, account):
     _register(client, **account)
-    asyncio.run(_set_status(client.app, account["account"], UserStatus.DISABLED))
+    db.disable_user(account["account"])
 
     r = _login(client, **account)
 
@@ -165,7 +155,7 @@ def test_login_payload_validation_returns_422(client, payload):
 # ---------------------------------------------------------------- 登录副作用
 
 
-def test_login_updates_audit_fields(client, account):
+def test_login_updates_audit_fields(client, db, account):
     registered = _register(client, **account)
     assert registered["user"]["last_login_at"] is None
 
@@ -174,22 +164,16 @@ def test_login_updates_audit_fields(client, account):
     # 响应里就带着新的 last_login_at
     assert body["user"]["last_login_at"] is not None
 
-    # 仓库里的 identity.last_used_at 也要更新
-    async def _read():
-        repo = client.app.state.auth_repo
-        return await repo.get_identity(AuthProvider.PASSWORD, account["account"])
-
-    identity = asyncio.run(_read())
+    # 库里的 identity.last_used_at 也要更新
+    identity = db.get_identity(account["account"])
     assert identity is not None
     assert identity.last_used_at is not None
 
 
-def test_orphan_identity_still_returns_generic_401(client, account):
-    """identity 还在、但 user 被删（数据不一致）时，也不能泄露"用户不存在"。"""
+def test_deleted_user_still_returns_generic_401(client, db, account):
+    """用户被删后，旧身份也不能泄露"用户不存在"。"""
     _register(client, **account)
-
-    # 直接清掉用户表，模拟"身份还在但用户没了"的脏数据
-    client.app.state.auth_repo._users.clear()
+    db.delete_user(account["account"])
 
     r = _login(client, **account)
 
@@ -209,3 +193,16 @@ def test_login_form_endpoint_for_swagger(client, account):
 
     assert r.status_code == 200
     assert "access_token" in r.json()
+
+
+def test_login_persists_audit_fields_to_db(client, db, account):
+    """回读校验：API 返回有值不代表真的落库了（曾经这里 NULL 过）。"""
+    _register(client, **account)
+    body = _login(client, **account).json()
+    assert body["user"]["last_login_at"] is not None   # 响应里有
+
+    audit = db.get_user_audit(account["account"])
+    assert audit.last_login_at is not None             # 库里也必须有
+
+    identity = db.get_identity(account["account"])
+    assert identity.last_used_at is not None

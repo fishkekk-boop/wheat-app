@@ -8,13 +8,15 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.20.1",
+    "asyncpg>=0.32.0",
     "fastapi>=0.162.2",
     "pwdlib[argon2]>=0.3.1",
     "pydantic-settings>=2.16.2",
     "pydantic[email]>=2.14.3",
     "pyjwt>=2.15.1",
     "python-multipart>=0.0.33",
-    "sqlalchemy>=2.1.9",
+    "sqlalchemy[asyncio]>=2.1.9",
     "structlog>=26.1.0",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -40,3 +42,9 @@ dev = [
 asyncio_mode = "auto"      # 这样写测试不用每个都加 @pytest.mark.asyncio
 pythonpath = ["src"]
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+# Alembic 生成的迁移文件属于"已执行的历史"，不参与格式化/自动修复：
+# - env.py / script.py.mako 是模板代码（.mako 不是合法 Python，ruff 解析会报错）
+# - versions/*.py 是 autogenerate 产物，重排 import 会制造无意义 diff
+extend-exclude = ["migrations"]
