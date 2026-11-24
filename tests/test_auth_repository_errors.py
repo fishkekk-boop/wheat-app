@@ -37,11 +37,6 @@ async def _create_user(repo, account: str, *, email: str | None = None) -> User:
 # ---------------------------------------------------------------- 更新用户
 
 
-@pytest.mark.xfail(
-    reason="真实 bug：email 唯一约束名是 users_email_idx（unique+index 生成唯一索引），"
-    "而 update_user 按 users_email_key 翻译 → 冲突时冒 IntegrityError（500）",
-    strict=False,
-)
 async def test_update_user_email_conflict_raises_conflict(factory):
     async with factory() as session:
         repo = SQLAlchemyAuthRepository(session)
@@ -54,10 +49,6 @@ async def test_update_user_email_conflict_raises_conflict(factory):
             await repo.update_user(bob)
 
 
-@pytest.mark.xfail(
-    reason="真实 bug：phone 唯一约束名是 users_phone_idx，代码按 users_phone_key 翻译",
-    strict=False,
-)
 async def test_update_user_phone_conflict_raises_conflict(factory):
     async with factory() as session:
         repo = SQLAlchemyAuthRepository(session)

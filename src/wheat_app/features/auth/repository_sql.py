@@ -149,11 +149,17 @@ class SQLAlchemyAuthRepository:
             return user_orm.to_domain()
         except IntegrityError as exc:
             await self.session.rollback()
+            # email/phone 是 unique=True + index=True，Postgres 里生成的是**唯一索引**
+            # （users_email_idx）；若将来改成显式 UniqueConstraint 则叫 users_email_key。
             constraint = get_constraint_name(exc)
-            if constraint == "users_email_key":
-                raise ConflictError(entity="User", identifier=f"email={user.email}") from exc
-            if constraint == "users_phone_key":
-                raise ConflictError(entity="User", identifier=f"phone={user.phone}") from exc
+            if constraint in ("users_email_idx", "users_email_key"):
+                raise ConflictError(
+                    entity="User", identifier=f"email={user.email}"
+                ) from exc
+            if constraint in ("users_phone_idx", "users_phone_key"):
+                raise ConflictError(
+                    entity="User", identifier=f"phone={user.phone}"
+                ) from exc
             raise
 
     async def update_identity(self, identity: AuthIdentity) -> AuthIdentity:

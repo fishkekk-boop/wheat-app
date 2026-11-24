@@ -58,6 +58,10 @@ class AuthSession:
 class AuthService:
     _DEFAULT_NICKNAME_PREFIX = "麦田用户"
 
+    # 目前只有密码有登录入口；等邮箱/手机号登录实现后把对应 provider 加进来，
+    # 否则解绑后用户可能只剩一个"绑了但登不了"的身份。
+    _LOGIN_CAPABLE_PROVIDERS = frozenset({AuthProvider.PASSWORD})
+
     def __init__(self, repo: AuthRepository) -> None:
         self.repo = repo
 
@@ -276,8 +280,15 @@ class AuthService:
             current_password, password_identity.secret_hash or ""
         ):
             raise InvalidCredentials()
-        valid_identity = next((i for i in identities if i.is_verified == True), None)
-        if len(identities) <= 1 and valid_identity is not None:
+
+        # 解绑后必须还剩至少一条「已验证、且当前有登录入口」的身份，否则用户会被锁死。
+        remaining = [i for i in identities if i.id != target.id]
+        still_usable = [
+            i
+            for i in remaining
+            if i.is_verified and i.provider in self._LOGIN_CAPABLE_PROVIDERS
+        ]
+        if not still_usable:
             raise LastIdentityRequired()
 
         await self.repo.delete_identity(target)
