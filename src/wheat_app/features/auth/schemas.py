@@ -7,10 +7,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from wheat_app.features.auth.models import AuthProvider, UserStatus
 from wheat_app.shared.constraints import StrippedStr
 from wheat_app.shared.schema import ORMModel
-
-from .models import UserStatus
 
 # 用户账号
 Account = Annotated[
@@ -37,6 +36,16 @@ class PasswordLoginRequest(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+
+class ProfileUpdateRequest(BaseModel):
+    nickname: Annotated[StrippedStr, Field(min_length=1, max_length=30)] | None = None
+    avatar_url: Annotated[str, Field(max_length=500)] | None = None
+    bio: Annotated[str, Field(max_length=500)] | None = None
+
+
+class DeleteIdentifier(BaseModel):
+    provider: AuthProvider
 
 
 # ----- 响应 -----

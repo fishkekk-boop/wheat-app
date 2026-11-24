@@ -20,7 +20,10 @@ from wheat_app.core.security import (
     verify_password_async,
 )
 from wheat_app.features.auth.exceptions import (
+    DeleteOnlyOne,
+    IdentifierExists,
     IdentityAlreadyTaken,
+    ProviderExists,
     UserDisabled,
     UserNotFound,
 )
@@ -178,6 +181,69 @@ class AuthService:
             return await self.require_active_user(user_id)
         except UserNotFound as e:
             raise AuthenticationError("身份凭证无效或已过期") from e
+
+    # ---- 更新 ----
+    async def update_user_profile(
+        self,
+        user: User,
+        nickname: str | None,
+        bio: str | None,
+        avatar_url: str | None,
+    ) -> User:
+        """根据 Token 更新用户信息"""
+        if nickname:
+            user.nickname = nickname
+        if bio:
+            user.bio = bio
+        if avatar_url:
+            user.avatar_url = avatar_url
+        logger.info(
+            "update_user_profile_success",
+            user_id=str(user.id),
+            nickname=nickname,
+            bio=bio,
+            avatar_url=avatar_url,
+        )
+        return await self.repo.update_user(user)
+
+    async def bind_identifier(
+        self,
+        *,
+        user: User,
+        provider: AuthProvider,
+        identifier: str,
+        secret_hash: str | None = None,
+        is_verified: bool = False,
+    ) -> AuthIdentity:
+        exists = await self.repo.get_identities_by_provider(provider, identifier)
+        if exists:
+            logger.warning("bind_provider_failed", reason="provider:identifier_exists")
+            raise IdentifierExists(f"{provider=}:{identifier=}已被使用")
+        identities = await self.repo.get_identities_by_user_id(user.id)
+        for i in identities:
+            if i.provider == provider:
+                logger.warning("bind_provider_failed", reason="provider_exists")
+                raise ProviderExists(
+                    f"user_id={i.user_id}已绑定 {provider=}:{identifier=}"
+                )
+        return await self.repo.add_identity(
+            user_id=user.id,
+            provider=provider,
+            identifier=identifier,
+            secret_hash=secret_hash,
+            is_verified=is_verified,
+        )
+
+    async def unbind_identifier(self, *, user: User, provider: AuthProvider) -> None:
+        identities = await self.repo.get_identities_by_user_id(user.id)
+        if len(identities) <= 1:
+            raise DeleteOnlyOne()
+        identifier = None
+        for i in identities:
+            if i.provider == provider:
+                identifier = i
+        if identifier is not None:
+            await self.repo.delete_identity(identifier)
 
     # ---- Token ----
 

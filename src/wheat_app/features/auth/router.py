@@ -11,9 +11,11 @@ from wheat_app.features.auth.dependencies import get_auth_service, get_current_u
 from wheat_app.features.auth.models import User
 from wheat_app.features.auth.schemas import (
     AuthResponse,
+    DeleteIdentifier,
     PasswordLoginRequest,
     PasswordRegisterRequest,
     PrivateUserOut,
+    ProfileUpdateRequest,
     PublicUserOut,
     RefreshRequest,
     TokenPair,
@@ -71,6 +73,19 @@ async def login_with_password(
     return service.issue_session(user)
 
 
+@router.post(
+    "/token/refresh",
+    response_model=TokenPair,
+    status_code=200,
+    summary="刷新 Access + Refresh Token",
+)
+async def refresh_tokens(
+    body: RefreshRequest,
+    service: Annotated[AuthService, Depends(get_auth_service)],
+) -> AuthSession:
+    return await service.refresh_session(body.refresh_token)
+
+
 @router.get(
     "/users/me",
     response_model=PrivateUserOut,
@@ -96,13 +111,33 @@ async def user_info(
 
 
 @router.post(
-    "/token/refresh",
-    response_model=TokenPair,
+    "/users/update/profile",
+    response_model=PrivateUserOut,
     status_code=200,
-    summary="刷新 Access + Refresh Token",
+    summary="更新用户资料",
 )
-async def refresh_tokens(
-    body: RefreshRequest,
+async def update_profile(
+    body: ProfileUpdateRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
     service: Annotated[AuthService, Depends(get_auth_service)],
-) -> AuthSession:
-    return await service.refresh_session(body.refresh_token)
+) -> User:
+    return await service.update_user_profile(
+        user=current_user,
+        nickname=body.nickname,
+        bio=body.bio,
+        avatar_url=body.avatar_url,
+    )
+
+
+@router.post(
+    "/users/delete/identifier",
+    status_code=200,
+    summary="解绑用户登录方式",
+)
+async def delete_identifier(
+    body: DeleteIdentifier,
+    current_user: Annotated[User, Depends(get_current_user)],
+    service: Annotated[AuthService, Depends(get_auth_service)],
+) -> None:
+    # 后续还需要验证成功后再进行删除登录凭证
+    await service.unbind_identifier(user=current_user, provider=body.provider)

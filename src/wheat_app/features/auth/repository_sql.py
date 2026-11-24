@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -110,6 +110,20 @@ class SQLAlchemyAuthRepository:
         result = await self.session.execute(stmt)
         return [i.to_domain() for i in result.scalars().all()]
 
+    async def get_identities_by_provider(
+        self,
+        provider: AuthProvider,
+        identifier: str,
+    ) -> AuthIdentity | None:
+        """查该登录方式是否存在"""
+        stmt = select(AuthIdentityORM).where(
+            AuthIdentityORM.provider == provider,
+            AuthIdentityORM.identifier == identifier,
+        )
+        result = await self.session.execute(stmt)
+        identity = result.scalar_one_or_none()
+        return identity.to_domain() if identity else None
+
     #  ---- 更新 ----
     async def update_user(self, user: User) -> User:
         """更新用户资料/状态"""
@@ -166,3 +180,9 @@ class SQLAlchemyAuthRepository:
                     identifier=f"{identity.provider}:{identity.identifier}",
                 ) from e
             raise
+
+    # ---- 删除 ----
+    async def delete_identity(self, identity: AuthIdentity) -> None:
+        """删除登录凭证"""
+        stmt = delete(AuthIdentityORM).where(AuthIdentityORM.id == identity.id)
+        await self.session.execute(stmt)

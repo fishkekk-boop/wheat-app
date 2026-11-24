@@ -4,7 +4,12 @@
 其他 feature 不该认识 ``IdentityAlreadyTaken`` 这种词。
 """
 
-from wheat_app.core.exceptions import AlreadyExists, AuthenticationError, NotFound
+from wheat_app.core.exceptions import (
+    AlreadyExists,
+    AuthenticationError,
+    DomainError,
+    NotFound,
+)
 
 
 class IdentityAlreadyTaken(AlreadyExists):
@@ -33,5 +38,20 @@ class UserNotFound(NotFound):
 
 
 class UserDisabled(AuthenticationError):
-    error_code = "AUTHENTICATION_FAILED"
+    error_code = "USER_DISABLED"
     default_message = "用户已禁用"
+
+
+class ProviderExists(AlreadyExists):
+    error_code = "PROVIDER_EXISTS"
+    default_message = "登录方式已被绑定"
+
+
+class IdentifierExists(AlreadyExists):
+    error_code = "IDENTIFIER_EXISTS"
+    default_message = "已有该登录方式"
+
+
+class DeleteOnlyOne(DomainError):
+    error_code = "DELETE_ONLY_ONE"
+    default_message = "至少要有一种登录方式"

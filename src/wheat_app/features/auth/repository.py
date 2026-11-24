@@ -50,6 +50,14 @@ class AuthRepository(Protocol):
         """查该 id 用户的所有登录方式"""
         ...
 
+    async def get_identities_by_provider(
+        self,
+        provider: AuthProvider,
+        identifier: str,
+    ) -> AuthIdentity:
+        """查该登录方式是否存在"""
+        ...
+
     #  ---- 更新 ----
     async def update_user(self, user: User) -> User:
         """更新用户资料/状态"""
@@ -57,4 +65,9 @@ class AuthRepository(Protocol):
 
     async def update_identity(self, identity: AuthIdentity) -> AuthIdentity:
         """更新登录凭证"""
+        ...
+
+    # ---- 删除 ----
+    async def delete_identity(self, identity: AuthIdentity) -> None:
+        """删除登录凭证"""
         ...

@@ -113,6 +113,7 @@ class AuthIdentityORM(Base, TimestampMixin):
     )
     __table_args__ = (
         UniqueConstraint("provider", "identifier", name="uq_auth_provider_identifier"),
+        UniqueConstraint("user_id", "provider", name="uq_auth_user_provider"),
     )
 
     def to_domain(self) -> AuthIdentity:
