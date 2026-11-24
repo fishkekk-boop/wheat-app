@@ -7,7 +7,13 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from wheat_app.core.database import Base, TimestampMixin
-from wheat_app.features.auth.models import AuthIdentity, AuthProvider, User, UserStatus
+from wheat_app.features.auth.models import (
+    AuthIdentity,
+    AuthProvider,
+    User,
+    UserRole,
+    UserStatus,
+)
 
 
 class UserORM(Base, TimestampMixin):
@@ -43,6 +49,16 @@ class UserORM(Base, TimestampMixin):
         default=UserStatus.ACTIVE,
         nullable=False,
     )
+    role: Mapped[UserRole] = mapped_column(
+        SAEnum(
+            UserRole,
+            name="user_role",
+            native_enum=False,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        default=UserRole.USER,
+        nullable=False,
+    )
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
@@ -65,6 +81,7 @@ class UserORM(Base, TimestampMixin):
             email=self.email,
             phone=self.phone,
             status=self.status,
+            role=self.role,
             created_at=self.created_at,
             updated_at=self.updated_at,
             last_login_at=self.last_login_at,

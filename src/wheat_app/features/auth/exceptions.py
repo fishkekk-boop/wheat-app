@@ -55,3 +55,8 @@ class IdentifierExists(AlreadyExists):
 class DeleteOnlyOne(DomainError):
     error_code = "DELETE_ONLY_ONE"
     default_message = "至少要有一种登录方式"
+
+
+class IdentityNotFound(NotFound):
+    error_code = "IDENTITY_NOT_FOUND"
+    default_message = "找不到该登录方式"

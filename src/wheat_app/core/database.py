@@ -11,8 +11,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from wheat_app.config import Settings
 
-# 统一约束命名
 POSTGRES_NAMING_CONVENTION = {
+    # 统一约束命名
     "ix": "%(column_0_label)s_idx",  # 普通索引
     "uq": "%(table_name)s_%(column_0_name)s_key",  # 唯一约束
     "ck": "%(table_name)s_%(constraint_name)s_check",  # 检查约束
@@ -22,7 +22,7 @@ POSTGRES_NAMING_CONVENTION = {
 
 
 def create_engine_and_session_factory(settings: Settings):
-
+    """创建异步会话工厂"""
     engine = create_async_engine(
         settings.database_url,
         pool_size=10,
@@ -43,10 +43,11 @@ metadata = MetaData(naming_convention=POSTGRES_NAMING_CONVENTION)
 
 
 class Base(AsyncAttrs, DeclarativeBase):
-    metadata = metadata
     """所有 ORM 模型的基类。
     AsyncAttrs 提供 awaitable_attrs，用于异步下显式触发懒加载。
     """
+
+    metadata = metadata
 
 
 class TimestampMixin:

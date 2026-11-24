@@ -2,7 +2,7 @@
 
 分派顺序（Starlette 按"最具体类型优先"匹配）：
 
-    HTTPException        → FastAPI/Starlette 自己抛的（OAuth2 未带 token、404、405）
+    HTTPException        → FastAPI/Starlette
     DomainError          → 业务规则（4xx），不打堆栈
     InfrastructureError  → 技术故障（5xx），打堆栈
     AppError             → 未分类的业务/基础异常兜底

@@ -23,6 +23,20 @@ class UserStatus(StrEnum):
     DELETED = "deleted"
 
 
+class UserRole(StrEnum):
+    USER = "user"
+    PREMIUM = "premium"
+    ADMIN = "admin"
+
+    @property
+    def level(self) -> int:
+        return {
+            "user": 1,
+            "premium": 2,
+            "admin": 99,
+        }[self.value]
+
+
 class AuthProvider(StrEnum):
     # 未来扩展：PHONE / EMAIL ...
     PASSWORD = "password"
@@ -38,6 +52,7 @@ class User(BaseModel):
     email: EmailStr | None = None
     phone: PhoneNumber | None = None
     status: UserStatus = UserStatus.ACTIVE
+    role: UserRole = UserRole.USER
     created_at: AwareDatetime
     updated_at: AwareDatetime
     last_login_at: AwareDatetime | None = None

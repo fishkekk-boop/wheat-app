@@ -17,7 +17,7 @@ def get_constraint_name(exc: IntegrityError) -> str | None:
 
 
 def _try_extract_constraint_name(exc: IntegrityError) -> str | None:
-    """从 IntegrityError 中提取约束名，asyncpg"""
+    """从 IntegrityError 中提取约束名，asyncpg 路径"""
     cause = getattr(exc.orig, "__cause__", None)
     if cause and hasattr(cause, "constraint_name"):
         return cause.constraint_name

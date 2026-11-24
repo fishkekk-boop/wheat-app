@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 
 from wheat_app.features.auth.dependencies import get_auth_service, get_current_user
-from wheat_app.features.auth.models import User
+from wheat_app.features.auth.models import AuthIdentity, User
 from wheat_app.features.auth.schemas import (
     AuthResponse,
     DeleteIdentifier,
@@ -19,6 +19,7 @@ from wheat_app.features.auth.schemas import (
     PublicUserOut,
     RefreshRequest,
     TokenPair,
+    UserIdentitie,
 )
 from wheat_app.features.auth.service import AuthService, AuthSession
 
@@ -99,6 +100,19 @@ async def me(
 
 
 @router.get(
+    "/users/me/identities",
+    response_model=list[UserIdentitie],
+    status_code=200,
+    summary="查询当前用户所有登录方式",
+)
+async def me_identities(
+    current_user: Annotated[User, Depends(get_current_user)],
+    service: Annotated[AuthService, Depends(get_auth_service)],
+) -> list[AuthIdentity]:
+    return await service.get_user_identities(current_user.id)
+
+
+@router.get(
     "/users/{user_id}",
     response_model=PublicUserOut,
     status_code=200,
@@ -139,5 +153,19 @@ async def delete_identifier(
     current_user: Annotated[User, Depends(get_current_user)],
     service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> None:
-    # 后续还需要验证成功后再进行删除登录凭证
-    await service.unbind_identifier(user=current_user, provider=body.provider)
+    await service.unbind_identifier(
+        user=current_user, provider=body.provider, current_password=body.password
+    )
+
+
+@router.delete(
+    "/users/{id}",
+    status_code=204,
+    summary="删除用户（软删除）",
+)
+async def delete_user(
+    id: UUID,
+    service: Annotated[AuthService, Depends(get_auth_service)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> None:
+    await service.delete_user(id, current_user)

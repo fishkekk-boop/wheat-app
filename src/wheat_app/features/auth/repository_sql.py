@@ -81,6 +81,11 @@ class SQLAlchemyAuthRepository:
                     entity="AuthIdentity",
                     identifier=f"{provider}:{identifier}",
                 )
+            if constraint == "uq_auth_user_provider":
+                raise ConflictError(
+                    entity="AuthIdentity",
+                    identifier=f"{provider}:{identifier}",
+                )
             raise
 
     async def get_user_by_id(self, user_id: UUID) -> User | None:
@@ -104,8 +109,15 @@ class SQLAlchemyAuthRepository:
 
     async def get_identities_by_user_id(self, user_id: UUID) -> list[AuthIdentity]:
         """查该 id 用户的所有登录方式，用户不存在时返回空列表"""
-        stmt = select(AuthIdentityORM).where(
-            AuthIdentityORM.user_id == user_id,
+        # stmt = select(AuthIdentityORM).where(
+        #     AuthIdentityORM.user_id == user_id,
+        # )
+        stmt = (
+            select(AuthIdentityORM)
+            .join(AuthIdentityORM.user)
+            .where(
+                AuthIdentityORM.user_id == user_id,
+            )
         )
         result = await self.session.execute(stmt)
         return [i.to_domain() for i in result.scalars().all()]
@@ -140,6 +152,7 @@ class SQLAlchemyAuthRepository:
             user_orm.email = user.email
             user_orm.phone = user.phone
             user_orm.status = user.status
+            user_orm.role = user.role
             user_orm.last_login_at = user.last_login_at
             await self.session.flush()
             await self.session.refresh(user_orm)

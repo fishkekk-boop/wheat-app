@@ -108,6 +108,12 @@ class AlreadyExists(DomainError):
     http_status = 409
 
 
+class Forbidden(DomainError):
+    error_code = "FORBIDDEN"
+    default_message = "无权限执行此操作"
+    http_status = 403
+
+
 class ConflictError(AlreadyExists):
     """唯一约束冲突（409）——**数据层专用**。
 

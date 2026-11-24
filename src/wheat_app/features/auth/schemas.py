@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from wheat_app.features.auth.models import AuthProvider, UserStatus
+from wheat_app.features.auth.models import AuthProvider, UserRole, UserStatus
 from wheat_app.shared.constraints import StrippedStr
 from wheat_app.shared.schema import ORMModel
 
@@ -46,6 +46,7 @@ class ProfileUpdateRequest(BaseModel):
 
 class DeleteIdentifier(BaseModel):
     provider: AuthProvider
+    password: Annotated[str, Field(min_length=1, max_length=128)]
 
 
 # ----- 响应 -----
@@ -54,6 +55,7 @@ class PublicUserOut(ORMModel):
     avatar_url: str | None
     bio: str | None
     status: UserStatus
+    role: UserRole
 
 
 class PrivateUserOut(PublicUserOut):
@@ -64,6 +66,7 @@ class PrivateUserOut(PublicUserOut):
     email: str | None
     phone: str | None
     status: UserStatus
+    role: UserRole
     created_at: datetime
     last_login_at: datetime | None
 
@@ -79,3 +82,12 @@ class TokenPair(ORMModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+
+
+class UserIdentitie(ORMModel):
+    provider: AuthProvider
+    identifier: str
+    is_verified: bool
+    created_at: datetime
+    updated_at: datetime
+    last_used_at: datetime | None = None

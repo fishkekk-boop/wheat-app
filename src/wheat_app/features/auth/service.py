@@ -12,6 +12,7 @@ from jwt.exceptions import InvalidTokenError
 from wheat_app.core.exceptions import (
     AuthenticationError,
     ConflictError,
+    Forbidden,
     InvalidCredentials,
 )
 from wheat_app.core.security import (
@@ -23,11 +24,18 @@ from wheat_app.features.auth.exceptions import (
     DeleteOnlyOne,
     IdentifierExists,
     IdentityAlreadyTaken,
+    IdentityNotFound,
     ProviderExists,
     UserDisabled,
     UserNotFound,
 )
-from wheat_app.features.auth.models import AuthIdentity, AuthProvider, User, UserStatus
+from wheat_app.features.auth.models import (
+    AuthIdentity,
+    AuthProvider,
+    User,
+    UserRole,
+    UserStatus,
+)
 from wheat_app.features.auth.repository import AuthRepository
 from wheat_app.features.auth.tokens import (
     create_access_token,
@@ -121,7 +129,6 @@ class AuthService:
             raise InvalidCredentials("用户状态异常，禁止登录")
         now = datetime.now(UTC)
         identity.last_used_at = now
-        # TODO(M2): 两次写库需同一事务
         await self.repo.update_identity(identity)
         user.last_login_at = now
         await self.repo.update_user(user)
@@ -182,20 +189,24 @@ class AuthService:
         except UserNotFound as e:
             raise AuthenticationError("身份凭证无效或已过期") from e
 
+    async def get_user_identities(self, user_id: UUID) -> list[AuthIdentity]:
+        return await self.repo.get_identities_by_user_id(user_id)
+
     # ---- 更新 ----
     async def update_user_profile(
         self,
+        *,
         user: User,
         nickname: str | None,
         bio: str | None,
         avatar_url: str | None,
     ) -> User:
         """根据 Token 更新用户信息"""
-        if nickname:
+        if nickname is not None:
             user.nickname = nickname
-        if bio:
+        if bio is not None:
             user.bio = bio
-        if avatar_url:
+        if avatar_url is not None:
             user.avatar_url = avatar_url
         logger.info(
             "update_user_profile_success",
@@ -234,16 +245,25 @@ class AuthService:
             is_verified=is_verified,
         )
 
-    async def unbind_identifier(self, *, user: User, provider: AuthProvider) -> None:
+    async def unbind_identifier(
+        self, *, user: User, provider: AuthProvider, current_password: str
+    ) -> None:
         identities = await self.repo.get_identities_by_user_id(user.id)
+
+        target = next((i for i in identities if i.provider == provider), None)
+        if target is None:
+            raise IdentityNotFound(provider)
+        password_identity = next(
+            (i for i in identities if i.provider == AuthProvider.PASSWORD), None
+        )
+        if password_identity is None or not await verify_password_async(
+            current_password, password_identity.secret_hash or ""
+        ):
+            raise InvalidCredentials()
+
         if len(identities) <= 1:
             raise DeleteOnlyOne()
-        identifier = None
-        for i in identities:
-            if i.provider == provider:
-                identifier = i
-        if identifier is not None:
-            await self.repo.delete_identity(identifier)
+        await self.repo.delete_identity(target)
 
     # ---- Token ----
 
@@ -256,3 +276,13 @@ class AuthService:
             raise AuthenticationError("Refresh Token 无效或已过期") from e
         user = await self.user_from_token_payload(payload)
         return self.issue_session(user)
+
+    # ---- 删除 ----
+    async def delete_user(self, user_id: UUID, operator_user: User) -> None:
+        if operator_user.role != UserRole.ADMIN:
+            logger.warning("delete_user_fialed", reason="forbidden")
+            raise Forbidden()
+        user = await self.get_user(user_id)
+        user.status = UserStatus.DELETED
+        await self.repo.update_user(user)
+        logger.info("delete_user_success", operator=operator_user.id, deleted=user_id)
