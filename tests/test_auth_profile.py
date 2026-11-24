@@ -65,16 +65,6 @@ def _make_token(
     return jwt.encode(payload, s.secret_key.get_secret_value(), algorithm=s.algorithm)
 
 
-async def _disable(app, account: str) -> None:
-    repo = app.state.auth_repo
-    identity = await repo.get_identity(AuthProvider.PASSWORD, account)
-    assert identity is not None
-    user = await repo.get_user_by_id(identity.user_id)
-    assert user is not None
-    user.status = UserStatus.DISABLED
-    await repo.update_user(user)
-
-
 # ---------------------------------------------------------------- /users/me
 
 
@@ -110,9 +100,9 @@ def test_me_rejects_expired_token(client):
     assert r.status_code == 401
 
 
-def test_me_rejects_token_of_disabled_user(client, account):
+def test_me_rejects_token_of_disabled_user(client, db, account):
     reg = _register(client, **account)
-    asyncio.run(_disable(client.app, account["account"]))
+    db.disable_user(account["account"])
 
     r = client.get(ME_URL, headers=_auth(reg["access_token"]))
 
@@ -192,9 +182,9 @@ def test_refresh_rejects_bad_tokens(client, token):
     assert r.status_code == 401
 
 
-def test_refresh_rejects_disabled_user(client, account):
+def test_refresh_rejects_disabled_user(client, db, account):
     reg = _register(client, **account)
-    asyncio.run(_disable(client.app, account["account"]))
+    db.disable_user(account["account"])
 
     r = client.post(REFRESH_URL, json={"refresh_token": reg["refresh_token"]})
     assert r.status_code == 401
