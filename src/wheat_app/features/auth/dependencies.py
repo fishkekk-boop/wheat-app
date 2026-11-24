@@ -4,20 +4,27 @@
 from typing import Annotated
 
 import structlog
-from fastapi import Depends, Request
+from fastapi import Depends
 from jwt.exceptions import InvalidTokenError
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from wheat_app.core.dependencies import get_db
 from wheat_app.core.exceptions import AuthenticationError
 from wheat_app.core.security import oauth2_scheme
 from wheat_app.features.auth.models import User
 from wheat_app.features.auth.repository import AuthRepository
+from wheat_app.features.auth.repository_sql import (
+    SQLAlchemyAuthRepository,
+)
 from wheat_app.features.auth.service import AuthService
 from wheat_app.features.auth.tokens import decode_token
 
 logger = structlog.get_logger(__name__)
 
 
-def get_auth_repo(request: Request) -> AuthRepository:
+def get_auth_repo(
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> SQLAlchemyAuthRepository:
     """从 app.state 取 repo，而非模块级单例。
 
     每个 create_app() 拥有独立存储：
@@ -26,7 +33,7 @@ def get_auth_repo(request: Request) -> AuthRepository:
 
     repo 由 lifespan 在启动时写入 app.state。
     """
-    return request.app.state.auth_repo
+    return SQLAlchemyAuthRepository(session)
 
 
 def get_auth_service(

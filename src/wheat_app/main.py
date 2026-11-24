@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import structlog
@@ -6,28 +6,30 @@ import uvicorn
 from fastapi import FastAPI
 
 from wheat_app.config import Env, Settings, get_settings
+from wheat_app.core.database import create_engine_and_session_factory
 from wheat_app.core.exception_handlers import register_exception_handlers
 from wheat_app.core.logging import setup_logging
 from wheat_app.core.middleware import RequestContextMiddleware
-from wheat_app.features.auth.repository import InMemoryAuthRepository
 from wheat_app.features.auth.router import router as auth_router
 
 logger = structlog.get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """应用生命周期：启动时创建资源，关闭时释放。"""
     settings = app.state.settings
 
     # 启动：创建进程级资源
-    app.state.auth_repo = InMemoryAuthRepository()
-    # 未来：app.state.db_engine = create_async_engine(settings.database_url)
+    engine, session_factory = create_engine_and_session_factory(app.state.settings)
+    app.state.db_engine = engine
+    app.state.db_session_factory = session_factory
     logger.info("app_started", env=settings.env.value, port=settings.port)
+
     yield
 
     # 关闭：释放资源
-    # 未来：await app.state.db_engine.dispose()
+    await app.state.db_engine.dispose()
     logger.info("app_stopped")
 
 
@@ -50,6 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # 注册全局异常处理器
     register_exception_handlers(app)
 
+    # 注册路由
     app.include_router(auth_router)
 
     return app

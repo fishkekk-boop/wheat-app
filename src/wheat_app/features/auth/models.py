@@ -26,6 +26,8 @@ class UserStatus(StrEnum):
 class AuthProvider(StrEnum):
     # 未来扩展：PHONE / EMAIL ...
     PASSWORD = "password"
+    EMAIL = "email"
+    PHONE = "phone"
 
 
 class User(BaseModel):
