@@ -148,6 +148,39 @@ class Db:
 
         return _run(_with_session(go))
 
+    # ---- 以下按 user_id 查（软删会把 identifier 改名，按账号名查会失效）----
+
+    def get_user_status_by_id(self, user_id):
+        async def go(session):
+            row = await session.execute(
+                text("SELECT status, role FROM users WHERE id = :u"), {"u": user_id}
+            )
+            return row.first()
+
+        return _run(_with_session(go))
+
+    def count_identities_by_user_id(self, user_id) -> int:
+        async def go(session):
+            row = await session.execute(
+                text("SELECT count(*) FROM auth_identities WHERE user_id = :u"),
+                {"u": user_id},
+            )
+            return row.scalar()
+
+        return _run(_with_session(go))
+
+    def get_identifiers(self, user_id) -> list[str]:
+        async def go(session):
+            rows = await session.execute(
+                text(
+                    "SELECT identifier FROM auth_identities WHERE user_id = :u ORDER BY identifier"
+                ),
+                {"u": user_id},
+            )
+            return [r.identifier for r in rows]
+
+        return _run(_with_session(go))
+
     def delete_user(self, account: str) -> None:
         async def go(session):
             await session.execute(

@@ -353,3 +353,52 @@ def test_list_identities_does_not_leak_other_users(client, account):
 
 def test_register_defaults_to_role_user(client, account):
     assert _register(client, **account)["user"]["role"] == "user"
+
+
+# ---------------------------------------------------------------- service：解绑不变量
+
+
+@pytest.mark.xfail(
+    reason="P2 修复不完整：只判断剩余身份「数量」，未判断剩余身份是否已验证/可登录",
+    strict=False,
+)
+async def test_unbind_preserves_a_usable_identity(factory):
+    """解绑后至少要留一条「已验证、可登录」的身份，否则用户会被锁死。"""
+    async with factory() as session:
+        repo = SQLAlchemyAuthRepository(session)
+        service = AuthService(repo)
+        user = await _user_with_password(repo)
+        # 绑一个未验证的 email 身份（当前没有验证流程，模拟绑定后未验证）
+        await service.bind_identifier(
+            user=user,
+            provider=AuthProvider.EMAIL,
+            identifier="alice@example.com",
+            is_verified=False,
+        )
+
+        with pytest.raises(LastIdentityRequired):
+            await service.unbind_identifier(
+                user=user, provider=AuthProvider.PASSWORD, current_password=PASSWORD
+            )
+
+
+@pytest.mark.xfail(
+    reason="P2 修复不完整：单条未验证身份也会被允许删除，导致零身份",
+    strict=False,
+)
+async def test_unbind_only_unverified_identity_rejected(factory):
+    async with factory() as session:
+        repo = SQLAlchemyAuthRepository(session)
+        service = AuthService(repo)
+        user = await repo.create_user_with_identity(
+            provider=AuthProvider.PASSWORD,
+            identifier="solo",
+            nickname="Solo",
+            secret_hash=hash_password(PASSWORD),
+            is_verified=False,
+        )
+
+        with pytest.raises(LastIdentityRequired):
+            await service.unbind_identifier(
+                user=user, provider=AuthProvider.PASSWORD, current_password=PASSWORD
+            )

@@ -276,8 +276,8 @@ class AuthService:
             current_password, password_identity.secret_hash or ""
         ):
             raise InvalidCredentials()
-
-        if len(identities) <= 1:
+        valid_identity = next((i for i in identities if i.is_verified == True), None)
+        if len(identities) <= 1 and valid_identity is not None:
             raise LastIdentityRequired()
 
         await self.repo.delete_identity(target)
@@ -307,5 +307,9 @@ class AuthService:
 
         user = await self.get_user(user_id)
         user.status = UserStatus.DELETED
+        identities = await self.get_user_identities(user_id)
+        for i in identities:
+            i.identifier = f"{i.identifier}_deleted_{i.id}"
+            await self.repo.update_identity(i)
         await self.repo.update_user(user)
         logger.info("delete_user_success", operator=operator.id, deleted=user_id)
