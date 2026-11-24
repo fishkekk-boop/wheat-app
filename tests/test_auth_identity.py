@@ -415,3 +415,24 @@ async def test_unbind_password_when_only_verified_email_remains_rejected(factory
             )
 
         assert len(await repo.get_identities_by_user_id(user.id)) == 2
+
+
+async def test_unbind_without_password_identity_returns_401_not_500(factory):
+    """账号只有 email 身份时解绑：应 401，而不是拿空哈希去校验（pwdlib 会抛异常 → 500）。"""
+    async with factory() as session:
+        repo = SQLAlchemyAuthRepository(session)
+        service = AuthService(repo)
+        # 只有一条 email 身份，没有 password 身份
+        user = await repo.create_user_with_identity(
+            provider=AuthProvider.EMAIL,
+            identifier="no-pass@example.com",
+            nickname="NoPass",
+            is_verified=True,
+        )
+
+        with pytest.raises(InvalidCredentials):
+            await service.unbind_identifier(
+                user=user,
+                provider=AuthProvider.EMAIL,
+                current_password="whatever",
+            )

@@ -276,8 +276,12 @@ class AuthService:
             raise IdentityNotFound(provider)
 
         password_identity = self._find_identity(identities, AuthProvider.PASSWORD)
-        if password_identity is None or not await verify_password_async(
-            current_password, password_identity.secret_hash or ""
+        # 没有密码身份（或哈希缺失）时不能拿空串去校验：pwdlib 会抛 UnknownHashError → 500。
+        # 这里也不需要等时防御——调用方已通过 access token 认证，不存在账号枚举面。
+        if password_identity is None or not password_identity.secret_hash:
+            raise InvalidCredentials()
+        if not await verify_password_async(
+            current_password, password_identity.secret_hash
         ):
             raise InvalidCredentials()
 
