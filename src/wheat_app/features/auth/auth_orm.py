@@ -1,3 +1,6 @@
+# src/wheat_app/features/auth/auth_orm.py
+"""SQLAlchemy 表结构（ORM 映射）。"""
+
 import uuid
 from datetime import datetime
 
@@ -15,62 +18,37 @@ from wheat_app.features.auth.models import (
     UserStatus,
 )
 
+# 枚举列统一用 native_enum=False（VARCHAR + CHECK），并把 StrEnum 的 value 存进去，
+# 这样数据库里是 'active' 而不是 'ACTIVE'，与领域/API 一致。
+ENUM_KW = {"native_enum": False, "values_callable": lambda e: [m.value for m in e]}
+
 
 class UserORM(Base, TimestampMixin):
-    """用户模型"""
-
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    nickname: Mapped[str] = mapped_column(String(30), nullable=False)
-    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    bio: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    email: Mapped[str | None] = mapped_column(
-        String(254),
-        unique=True,
-        index=True,
-        nullable=True,
-    )
-    phone: Mapped[str | None] = mapped_column(
-        String(20),
-        unique=True,
-        index=True,
-        nullable=True,
-    )
+    nickname: Mapped[str] = mapped_column(String(30))
+    avatar_url: Mapped[str | None] = mapped_column(String(500))
+    bio: Mapped[str | None] = mapped_column(String(500))
+    email: Mapped[str | None] = mapped_column(String(254), unique=True, index=True)
+    phone: Mapped[str | None] = mapped_column(String(20), unique=True, index=True)
     status: Mapped[UserStatus] = mapped_column(
-        SAEnum(
-            UserStatus,
-            name="user_status",
-            native_enum=False,
-            values_callable=lambda e: [m.value for m in e],
-        ),
+        SAEnum(UserStatus, name="user_status", **ENUM_KW),
         default=UserStatus.ACTIVE,
-        nullable=False,
     )
     role: Mapped[UserRole] = mapped_column(
-        SAEnum(
-            UserRole,
-            name="user_role",
-            native_enum=False,
-            values_callable=lambda e: [m.value for m in e],
-        ),
+        SAEnum(UserRole, name="user_role", **ENUM_KW),
         default=UserRole.USER,
-        nullable=False,
     )
-    last_login_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     identities: Mapped[list["AuthIdentityORM"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
         lazy="raise",
     )
-
-    def __repr__(self) -> str:
-        return f"<UserORM id={self.id} nickname={self.nickname!r}>"
 
     def to_domain(self) -> User:
         return User(
@@ -89,47 +67,30 @@ class UserORM(Base, TimestampMixin):
 
 
 class AuthIdentityORM(Base, TimestampMixin):
-    """身份认证模型"""
-
     __tablename__ = "auth_identities"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        primary_key=True,
-        default=uuid.uuid4,
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
         index=True,
     )
     provider: Mapped[AuthProvider] = mapped_column(
-        SAEnum(
-            AuthProvider,
-            name="identity_provider",
-            native_enum=False,
-            values_callable=lambda e: [m.value for m in e],
-        ),
-        nullable=False,
+        SAEnum(AuthProvider, name="identity_provider", **ENUM_KW)
     )
-    identifier: Mapped[str] = mapped_column(String(255), nullable=False)
-    secret_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    is_verified: Mapped[bool] = mapped_column(
-        Boolean,
-        default=False,
-        nullable=False,
-    )
-    last_used_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-    user: Mapped["UserORM"] = relationship(
-        back_populates="identities",
-        lazy="raise",
-    )
+    identifier: Mapped[str] = mapped_column(String(255))
+    secret_hash: Mapped[str | None] = mapped_column(String(255))
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped["UserORM"] = relationship(back_populates="identities", lazy="raise")
+
     __table_args__ = (
+        # 全局唯一：同一个 (provider, identifier) 只能属于一个用户。
         UniqueConstraint("provider", "identifier", name="uq_auth_provider_identifier"),
+        # 每用户每 provider 至多一条：一个用户只能有一个密码/邮箱/手机号身份。
         UniqueConstraint("user_id", "provider", name="uq_auth_user_provider"),
     )
 
@@ -137,7 +98,7 @@ class AuthIdentityORM(Base, TimestampMixin):
         return AuthIdentity(
             id=self.id,
             user_id=self.user_id,
-            provider=AuthProvider(self.provider),
+            provider=self.provider,
             identifier=self.identifier,
             secret_hash=self.secret_hash,
             is_verified=self.is_verified,

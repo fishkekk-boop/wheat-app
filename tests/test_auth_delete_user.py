@@ -4,7 +4,6 @@
 规则：只有 ADMIN 能删；删的是 `status=DELETED`，不是物理删除。
 """
 
-import pytest
 
 REGISTER_URL = "/auth/register/password"
 ME_URL = "/auth/users/me"
@@ -80,3 +79,16 @@ def test_delete_unknown_user_returns_404(client, db, account):
 
     assert r.status_code == 404
     assert r.json()["error_code"] == "USER_NOT_FOUND"
+
+
+def test_admin_cannot_delete_self(client, db, account):
+    """管理员也不能删自己（防止把自己锁在门外）。"""
+    admin = _register(client, **account)
+    db.set_role(account["account"], "admin")
+
+    r = client.delete(
+        f"/auth/users/{admin['user']['id']}", headers=_auth(admin["access_token"])
+    )
+
+    assert r.status_code == 403
+    assert r.json()["error_code"] == "FORBIDDEN"

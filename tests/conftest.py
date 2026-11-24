@@ -12,6 +12,7 @@
 
 import asyncio
 import os
+from collections.abc import Iterator
 
 # ⚠️ 必须在 import wheat_app 之前设置：get_settings() 读环境变量优先于 .env
 os.environ["DATABASE_URL"] = (
@@ -197,7 +198,7 @@ def db(_db_schema) -> Db:
 
 
 @pytest.fixture
-def client(_db_schema) -> TestClient:
+def client(_db_schema) -> Iterator[TestClient]:
     with TestClient(create_app()) as c:
         yield c
 

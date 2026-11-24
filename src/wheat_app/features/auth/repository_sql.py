@@ -1,3 +1,16 @@
+# src/wheat_app/features/auth/repository_sql.py
+"""SQLAlchemy 版仓库（适配器）。
+
+事务约定
+--------
+- 正常路径：只 ``add`` / ``flush``，**不提交**；由 ``core.dependencies.get_db``
+  在请求结束时统一 commit / rollback。
+- ``flush()`` 会把唯一约束/外键约束错误提前抛到本层，从而能被翻译成业务异常
+  （否则会延迟到请求结束的 commit，客户端只能拿到 500）。
+- 捕获 ``IntegrityError`` 后本层会 ``rollback()`` 再翻译成业务异常；
+  这意味着该请求内的其它写也会被回滚——当前每个用例都是单步写，可接受。
+"""
+
 from uuid import UUID
 
 from sqlalchemy import delete, select
@@ -14,6 +27,8 @@ class SQLAlchemyAuthRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    # ---------------------------------------------------------------- 创建
+
     async def create_user_with_identity(
         self,
         *,
@@ -23,11 +38,12 @@ class SQLAlchemyAuthRepository:
         secret_hash: str | None = None,
         is_verified: bool = False,
     ) -> User:
-        """创建 User + 首条 AuthIdentity，原子完成"""
+        """创建用户及其首条身份，同一事务内完成。"""
         try:
             user_orm = UserORM(nickname=nickname)
             self.session.add(user_orm)
             await self.session.flush()
+
             identity_orm = AuthIdentityORM(
                 user_id=user_orm.id,
                 provider=provider,
@@ -37,16 +53,14 @@ class SQLAlchemyAuthRepository:
             )
             self.session.add(identity_orm)
             await self.session.flush()
-            await self.session.refresh(user_orm)
+            await self.session.refresh(user_orm)  # 载入 created_at/updated_at
             return user_orm.to_domain()
-        except IntegrityError as e:
+        except IntegrityError as exc:
             await self.session.rollback()
-            constraint = get_constraint_name(e)
-            if constraint == "uq_auth_provider_identifier":
+            if get_constraint_name(exc) == "uq_auth_provider_identifier":
                 raise ConflictError(
-                    entity="AuthIdentity",
-                    identifier=f"{provider}:{identifier}",
-                )
+                    entity="AuthIdentity", identifier=f"{provider.value}:{identifier}"
+                ) from exc
             raise
 
     async def add_identity(
@@ -58,7 +72,7 @@ class SQLAlchemyAuthRepository:
         secret_hash: str | None = None,
         is_verified: bool = False,
     ) -> AuthIdentity:
-        """给已有用户绑定新登录方式，原子完成"""
+        """给已有用户绑定一条新身份。"""
         try:
             identity_orm = AuthIdentityORM(
                 user_id=user_id,
@@ -71,25 +85,20 @@ class SQLAlchemyAuthRepository:
             await self.session.flush()
             await self.session.refresh(identity_orm)
             return identity_orm.to_domain()
-        except IntegrityError as e:
+        except IntegrityError as exc:
             await self.session.rollback()
-            constraint = get_constraint_name(e)
+            constraint = get_constraint_name(exc)
             if constraint == "auth_identities_user_id_fkey":
-                raise EntityNotFound(entity="User", entity_id=user_id)
-            if constraint == "uq_auth_provider_identifier":
+                raise EntityNotFound(entity="User", entity_id=user_id) from exc
+            if constraint in ("uq_auth_provider_identifier", "uq_auth_user_provider"):
                 raise ConflictError(
-                    entity="AuthIdentity",
-                    identifier=f"{provider}:{identifier}",
-                )
-            if constraint == "uq_auth_user_provider":
-                raise ConflictError(
-                    entity="AuthIdentity",
-                    identifier=f"{provider}:{identifier}",
-                )
+                    entity="AuthIdentity", identifier=f"{provider.value}:{identifier}"
+                ) from exc
             raise
 
+    # ---------------------------------------------------------------- 查询
+
     async def get_user_by_id(self, user_id: UUID) -> User | None:
-        """按主键查用户，不存在返回 None。"""
         user = await self.session.get(UserORM, user_id)
         return user.to_domain() if user is not None else None
 
@@ -98,51 +107,32 @@ class SQLAlchemyAuthRepository:
         provider: AuthProvider,
         identifier: str,
     ) -> AuthIdentity | None:
-        """按 (provider, identifier) 查凭证"""
         stmt = select(AuthIdentityORM).where(
             AuthIdentityORM.provider == provider,
             AuthIdentityORM.identifier == identifier,
         )
-        result = await self.session.execute(stmt)
-        identity_orm = result.scalar_one_or_none()
-        return identity_orm.to_domain() if identity_orm is not None else None
+        identity = (await self.session.execute(stmt)).scalar_one_or_none()
+        return identity.to_domain() if identity is not None else None
 
     async def get_identities_by_user_id(self, user_id: UUID) -> list[AuthIdentity]:
-        """查该 id 用户的所有登录方式，用户不存在时返回空列表"""
-        # stmt = select(AuthIdentityORM).where(
-        #     AuthIdentityORM.user_id == user_id,
-        # )
-        stmt = (
-            select(AuthIdentityORM)
-            .join(AuthIdentityORM.user)
-            .where(
-                AuthIdentityORM.user_id == user_id,
-            )
-        )
+        stmt = select(AuthIdentityORM).where(AuthIdentityORM.user_id == user_id)
         result = await self.session.execute(stmt)
-        return [i.to_domain() for i in result.scalars().all()]
+        return [row.to_domain() for row in result.scalars().all()]
 
     async def get_identities_by_provider(
         self,
         provider: AuthProvider,
         identifier: str,
     ) -> AuthIdentity | None:
-        """查该登录方式是否存在"""
-        stmt = select(AuthIdentityORM).where(
-            AuthIdentityORM.provider == provider,
-            AuthIdentityORM.identifier == identifier,
-        )
-        result = await self.session.execute(stmt)
-        identity = result.scalar_one_or_none()
-        return identity.to_domain() if identity else None
+        """查 (provider, identifier) 是否已被占用。"""
+        return await self.get_identity(provider, identifier)
 
-    #  ---- 更新 ----
+    # ---------------------------------------------------------------- 更新
+
     async def update_user(self, user: User) -> User:
-        """更新用户资料/状态"""
+        """整行覆盖用户。"""
         try:
-            user_orm = await self.session.get(
-                entity=UserORM, ident=user.id, with_for_update=True
-            )
+            user_orm = await self.session.get(UserORM, user.id, with_for_update=True)
             if user_orm is None:
                 raise EntityNotFound("User", user.id)
 
@@ -157,25 +147,22 @@ class SQLAlchemyAuthRepository:
             await self.session.flush()
             await self.session.refresh(user_orm)
             return user_orm.to_domain()
-        except IntegrityError as e:
+        except IntegrityError as exc:
             await self.session.rollback()
-            constraint = get_constraint_name(e)
+            constraint = get_constraint_name(exc)
             if constraint == "users_email_key":
-                raise ConflictError(
-                    entity="User", identifier=f"email={user.email}"
-                ) from e
+                raise ConflictError(entity="User", identifier=f"email={user.email}") from exc
             if constraint == "users_phone_key":
-                raise ConflictError(
-                    entity="User", identifier=f"phone={user.phone}"
-                ) from e
+                raise ConflictError(entity="User", identifier=f"phone={user.phone}") from exc
             raise
 
     async def update_identity(self, identity: AuthIdentity) -> AuthIdentity:
-        """更新登录凭证"""
+        """整行覆盖登录身份。"""
         try:
             identity_orm = await self.session.get(AuthIdentityORM, identity.id)
             if identity_orm is None:
                 raise EntityNotFound("AuthIdentity", identity.id)
+
             identity_orm.provider = identity.provider
             identity_orm.identifier = identity.identifier
             identity_orm.secret_hash = identity.secret_hash
@@ -184,18 +171,17 @@ class SQLAlchemyAuthRepository:
             await self.session.flush()
             await self.session.refresh(identity_orm)
             return identity_orm.to_domain()
-        except IntegrityError as e:
+        except IntegrityError as exc:
             await self.session.rollback()
-            constraint = get_constraint_name(e)
-            if constraint == "uq_auth_provider_identifier":
+            if get_constraint_name(exc) == "uq_auth_provider_identifier":
                 raise ConflictError(
                     entity="AuthIdentity",
-                    identifier=f"{identity.provider}:{identity.identifier}",
-                ) from e
+                    identifier=f"{identity.provider.value}:{identity.identifier}",
+                ) from exc
             raise
 
-    # ---- 删除 ----
+    # ---------------------------------------------------------------- 删除
+
     async def delete_identity(self, identity: AuthIdentity) -> None:
-        """删除登录凭证"""
         stmt = delete(AuthIdentityORM).where(AuthIdentityORM.id == identity.id)
         await self.session.execute(stmt)

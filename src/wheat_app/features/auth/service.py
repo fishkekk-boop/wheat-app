@@ -1,5 +1,5 @@
 # src/wheat_app/features/auth/service.py
-"""Auth: 业务异常 + 业务逻辑"""
+"""Auth 业务逻辑（用例编排层）。"""
 
 import secrets
 from dataclasses import dataclass
@@ -21,11 +21,11 @@ from wheat_app.core.security import (
     verify_password_async,
 )
 from wheat_app.features.auth.exceptions import (
-    DeleteOnlyOne,
-    IdentifierExists,
+    IdentifierAlreadyBound,
     IdentityAlreadyTaken,
     IdentityNotFound,
-    ProviderExists,
+    LastIdentityRequired,
+    ProviderAlreadyBound,
     UserDisabled,
     UserNotFound,
 )
@@ -48,6 +48,8 @@ logger = structlog.get_logger(__name__)
 
 @dataclass(frozen=True)
 class AuthSession:
+    """一次认证会话的领域结果：谁 + 一对新 token。"""
+
     user: User
     access_token: str
     refresh_token: str
@@ -59,19 +61,26 @@ class AuthService:
     def __init__(self, repo: AuthRepository) -> None:
         self.repo = repo
 
+    # ---------------------------------------------------------------- 辅助
+
     def _generate_default_nickname(self) -> str:
-        """拼接默认用户昵称"""
         return f"{self._DEFAULT_NICKNAME_PREFIX}_{secrets.token_hex(3)}"
 
     def issue_session(self, user: User) -> AuthSession:
-        """构造 Tokens + User 返回模型，login register 共用"""
+        """为已认证用户签发一对 token。"""
         return AuthSession(
+            user=user,
             access_token=create_access_token(user.id),
             refresh_token=create_refresh_token(user.id),
-            user=user,
         )
 
-    #  ---- 注册 ----
+    @staticmethod
+    def _find_identity(
+        identities: list[AuthIdentity], provider: AuthProvider
+    ) -> AuthIdentity | None:
+        return next((i for i in identities if i.provider is provider), None)
+
+    # ---------------------------------------------------------------- 注册
 
     async def _create_account(
         self,
@@ -82,7 +91,6 @@ class AuthService:
         secret_hash: str | None = None,
         is_verified: bool = False,
     ) -> User:
-        """新用户数据落库"""
         try:
             return await self.repo.create_user_with_identity(
                 provider=provider,
@@ -91,8 +99,8 @@ class AuthService:
                 secret_hash=secret_hash,
                 is_verified=is_verified,
             )
-        except ConflictError as e:
-            raise IdentityAlreadyTaken() from e
+        except ConflictError as exc:
+            raise IdentityAlreadyTaken() from exc
 
     async def register_with_password(
         self, *, account: str, password: str, nickname: str | None = None
@@ -112,51 +120,54 @@ class AuthService:
         logger.info("register_success", user_id=str(user.id), account=account)
         return user
 
-    #  ---- 登录 ----
+    # ---------------------------------------------------------------- 登录
 
     async def _complete_login(self, identity: AuthIdentity) -> User:
-        """校验账号存在且状正常"""
+        """登录校验通过后：加载用户、检查状态、更新审计字段。"""
         user = await self.repo.get_user_by_id(identity.user_id)
-        if not user:
+        if user is None:
             logger.warning(
                 "login_failed", identity_id=str(identity.id), reason="user_missing"
             )
-            raise InvalidCredentials("用户名或密码错误")
-        if user.status != UserStatus.ACTIVE:
+            raise InvalidCredentials()
+        if user.status is not UserStatus.ACTIVE:
             logger.warning(
                 "login_failed", identity_id=str(identity.id), reason="inactive_user"
             )
-            raise InvalidCredentials("用户状态异常，禁止登录")
+            raise InvalidCredentials()
+
         now = datetime.now(UTC)
         identity.last_used_at = now
         await self.repo.update_identity(identity)
         user.last_login_at = now
         await self.repo.update_user(user)
+
         logger.info(
             "login_success", user_id=str(user.id), provider=identity.provider.value
         )
         return user
 
     async def login_with_password(self, *, account: str, password: str) -> User:
-        """校验凭据；通过后交给 _complete_login 处理登录副作用"""
         logger.info("login_attempt", provider="password", identifier=account)
         identity = await self.repo.get_identity(AuthProvider.PASSWORD, account)
-        if not identity or not identity.secret_hash:
+
+        # 账号不存在时也做一次哈希比对，避免响应时间差被用来枚举账号。
+        if identity is None or not identity.secret_hash:
             await verify_password_async(password, DUMMY_HASH)
             logger.warning(
                 "login_failed", identifier=account, reason="invalid_credentials"
             )
-            raise InvalidCredentials("用户名或密码错误")
+            raise InvalidCredentials()
 
         if not await verify_password_async(password, identity.secret_hash):
             logger.warning(
                 "login_failed", identifier=account, reason="invalid_credentials"
             )
-            raise InvalidCredentials("用户名或密码错误")
+            raise InvalidCredentials()
 
         return await self._complete_login(identity)
 
-    #  ---- 查用户 ----
+    # ---------------------------------------------------------------- 查询
 
     async def _load_user(self, user_id: UUID) -> User:
         user = await self.repo.get_user_by_id(user_id)
@@ -165,34 +176,38 @@ class AuthService:
         return user
 
     async def get_user(self, user_id: UUID) -> User:
+        """按 id 查用户；不存在抛 UserNotFound（404）。"""
         return await self._load_user(user_id)
 
-    async def require_active_user(self, user_id: UUID) -> User:  # 给认证，401
+    async def require_active_user(self, user_id: UUID) -> User:
+        """认证用：用户必须存在且 ACTIVE，否则 401。"""
         user = await self._load_user(user_id)
         if user.status is not UserStatus.ACTIVE:
             raise UserDisabled()
         return user
 
     async def user_from_token_payload(self, payload: dict) -> User:
-        """把已解码的 token payload 还原成可用用户；失败一律 401。"""
+        """把已解码的 token payload 还原成可用用户；任何失败一律 401。"""
         sub = payload.get("sub")
         if sub is None:
             logger.warning("auth_failed", reason="missing_sub")
-            raise AuthenticationError("无效 Token")
+            raise AuthenticationError()
         try:
             user_id = UUID(sub)
-        except ValueError as e:
+        except ValueError as exc:
             logger.warning("auth_failed", reason="invalid_sub_format")
-            raise AuthenticationError("无效 Token") from e
+            raise AuthenticationError() from exc
+
         try:
             return await self.require_active_user(user_id)
-        except UserNotFound as e:
-            raise AuthenticationError("身份凭证无效或已过期") from e
+        except UserNotFound as exc:
+            raise AuthenticationError() from exc
 
     async def get_user_identities(self, user_id: UUID) -> list[AuthIdentity]:
         return await self.repo.get_identities_by_user_id(user_id)
 
-    # ---- 更新 ----
+    # ---------------------------------------------------------------- 更新
+
     async def update_user_profile(
         self,
         *,
@@ -201,21 +216,18 @@ class AuthService:
         bio: str | None,
         avatar_url: str | None,
     ) -> User:
-        """根据 Token 更新用户信息"""
+        """更新本人资料；只允许改 nickname / bio / avatar_url。"""
         if nickname is not None:
             user.nickname = nickname
         if bio is not None:
             user.bio = bio
         if avatar_url is not None:
             user.avatar_url = avatar_url
-        logger.info(
-            "update_user_profile_success",
-            user_id=str(user.id),
-            nickname=nickname,
-            bio=bio,
-            avatar_url=avatar_url,
-        )
+
+        logger.info("update_user_profile_success", user_id=str(user.id))
         return await self.repo.update_user(user)
+
+    # ---------------------------------------------------------------- 绑定 / 解绑
 
     async def bind_identifier(
         self,
@@ -226,17 +238,21 @@ class AuthService:
         secret_hash: str | None = None,
         is_verified: bool = False,
     ) -> AuthIdentity:
-        exists = await self.repo.get_identities_by_provider(provider, identifier)
-        if exists:
-            logger.warning("bind_provider_failed", reason="provider:identifier_exists")
-            raise IdentifierExists(f"{provider=}:{identifier=}已被使用")
+        """给当前用户绑定一条新登录方式。
+
+        业务规则：
+        - 该 (provider, identifier) 全局唯一（被别的账号占用则拒绝）
+        - 同一用户同一 provider 只能有一条
+        """
+        if await self.repo.get_identities_by_provider(provider, identifier):
+            logger.warning("bind_identity_failed", reason="identifier_taken")
+            raise IdentifierAlreadyBound()
+
         identities = await self.repo.get_identities_by_user_id(user.id)
-        for i in identities:
-            if i.provider == provider:
-                logger.warning("bind_provider_failed", reason="provider_exists")
-                raise ProviderExists(
-                    f"user_id={i.user_id}已绑定 {provider=}:{identifier=}"
-                )
+        if self._find_identity(identities, provider) is not None:
+            logger.warning("bind_identity_failed", reason="provider_bound")
+            raise ProviderAlreadyBound()
+
         return await self.repo.add_identity(
             user_id=user.id,
             provider=provider,
@@ -248,41 +264,48 @@ class AuthService:
     async def unbind_identifier(
         self, *, user: User, provider: AuthProvider, current_password: str
     ) -> None:
+        """解绑一条登录方式；需重新输入密码。"""
         identities = await self.repo.get_identities_by_user_id(user.id)
 
-        target = next((i for i in identities if i.provider == provider), None)
+        target = self._find_identity(identities, provider)
         if target is None:
             raise IdentityNotFound(provider)
-        password_identity = next(
-            (i for i in identities if i.provider == AuthProvider.PASSWORD), None
-        )
+
+        password_identity = self._find_identity(identities, AuthProvider.PASSWORD)
         if password_identity is None or not await verify_password_async(
             current_password, password_identity.secret_hash or ""
         ):
             raise InvalidCredentials()
 
         if len(identities) <= 1:
-            raise DeleteOnlyOne()
+            raise LastIdentityRequired()
+
         await self.repo.delete_identity(target)
 
-    # ---- Token ----
+    # ---------------------------------------------------------------- Token
 
     async def refresh_session(self, token: str) -> AuthSession:
-        """校验 refresh token，并签发一对新的 token（旧 token 在有效期内仍可用）。"""
+        """校验 refresh token，签发新的一对 token。"""
         try:
             payload = decode_token(token, "refresh")
-        except InvalidTokenError as e:
+        except InvalidTokenError as exc:
             logger.warning("refresh_failed", reason="invalid_token")
-            raise AuthenticationError("Refresh Token 无效或已过期") from e
+            raise AuthenticationError() from exc
+
         user = await self.user_from_token_payload(payload)
         return self.issue_session(user)
 
-    # ---- 删除 ----
-    async def delete_user(self, user_id: UUID, operator_user: User) -> None:
-        if operator_user.role != UserRole.ADMIN:
-            logger.warning("delete_user_fialed", reason="forbidden")
+    # ---------------------------------------------------------------- 删除
+
+    async def delete_user(self, user_id: UUID, operator: User) -> None:
+        """软删除用户（仅管理员）。"""
+        if operator.role is not UserRole.ADMIN:
+            logger.warning("delete_user_failed", reason="forbidden")
             raise Forbidden()
+        if operator.id == user_id:
+            raise Forbidden("不能删除自己")
+
         user = await self.get_user(user_id)
         user.status = UserStatus.DELETED
         await self.repo.update_user(user)
-        logger.info("delete_user_success", operator=operator_user.id, deleted=user_id)
+        logger.info("delete_user_success", operator=operator.id, deleted=user_id)
