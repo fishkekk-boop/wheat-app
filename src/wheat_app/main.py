@@ -1,3 +1,6 @@
+# src/wheat_app/main.py
+"""应用工厂与启动入口。"""
+
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -17,56 +20,49 @@ logger = structlog.get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """应用生命周期：启动时创建资源，关闭时释放。"""
-    settings = app.state.settings
-
-    # 启动：创建进程级资源
+    """启动时创建进程级资源，关闭时释放。"""
     engine, session_factory = create_engine_and_session_factory(app.state.settings)
     app.state.db_engine = engine
     app.state.db_session_factory = session_factory
-    logger.info("app_started", env=settings.env.value, port=settings.port)
+    logger.info(
+        "app_started", env=app.state.settings.env.value, port=app.state.settings.port
+    )
 
     yield
 
-    # 关闭：释放资源
     await app.state.db_engine.dispose()
     logger.info("app_stopped")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    settings = settings if settings is not None else get_settings()
+    """应用工厂：测试可传入自定义 Settings，生产/开发使用 ``get_settings()``。"""
+    settings = settings or get_settings()
     setup_logging()
 
-    app = FastAPI(
-        title=settings.app_name,
-        debug=settings.debug,
-        lifespan=lifespan,
-    )
-
-    # 无法依赖注入时需要引用配置，如：中间件、全局异常处理器...
+    app = FastAPI(title=settings.app_name, debug=settings.debug, lifespan=lifespan)
     app.state.settings = settings
 
-    # 聚合请求日志
     app.add_middleware(RequestContextMiddleware)
-
-    # 注册全局异常处理器
     register_exception_handlers(app)
-
-    # 注册路由
     app.include_router(auth_router)
+
+    @app.get("/", include_in_schema=False)
+    async def health() -> dict[str, str]:
+        """健康检查。"""
+        return {"status": "ok"}
 
     return app
 
 
 def run() -> None:
-    """开发环境启动入口。"""
+    """开发环境启动入口（``uv run wheat-app``）。"""
     settings = get_settings()
-
     if settings.env is Env.PROD:
         raise SystemExit(
             "生产请用: uvicorn wheat_app.main:create_app --factory "
             "--host 0.0.0.0 --port 8000 --workers 4"
         )
+
     uvicorn.run(
         "wheat_app.main:create_app",
         factory=True,

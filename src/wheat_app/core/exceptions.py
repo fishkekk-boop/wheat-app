@@ -108,6 +108,18 @@ class AlreadyExists(DomainError):
     http_status = 409
 
 
+class Forbidden(DomainError):
+    """已认证但没有权限执行该操作（403）。
+
+    **何时用**：用户身份有效，但角色/所有权不允许（如非管理员删除用户）。
+    **由谁抛**：service 层的权限校验。
+    """
+
+    error_code = "FORBIDDEN"
+    default_message = "无权限执行此操作"
+    http_status = 403
+
+
 class ConflictError(AlreadyExists):
     """唯一约束冲突（409）——**数据层专用**。
 

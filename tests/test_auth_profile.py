@@ -7,7 +7,6 @@
   3. token 类型：access 与 refresh 不能互相顶替
 """
 
-import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -15,13 +14,12 @@ import jwt
 import pytest
 
 from wheat_app.config import get_settings
-from wheat_app.features.auth.models import AuthProvider, UserStatus
 
 REGISTER_URL = "/auth/register/password"
 ME_URL = "/auth/users/me"
 REFRESH_URL = "/auth/token/refresh"
 
-PUBLIC_KEYS = {"nickname", "avatar_url", "bio", "status"}
+PUBLIC_KEYS = {"nickname", "avatar_url", "bio", "status", "role"}
 PRIVATE_KEYS = {
     "id",
     "nickname",
@@ -30,6 +28,7 @@ PRIVATE_KEYS = {
     "email",
     "phone",
     "status",
+    "role",
     "created_at",
     "last_login_at",
 }

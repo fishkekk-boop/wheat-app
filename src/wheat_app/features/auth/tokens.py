@@ -1,3 +1,6 @@
+# src/wheat_app/features/auth/tokens.py
+"""JWT 的签发与校验。"""
+
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -10,21 +13,17 @@ from wheat_app.config import get_settings
 logger = structlog.get_logger(__name__)
 
 
-def _create_token(
-    user_id: UUID, token_type: str, expires_delta: timedelta, scope: str | None = None
-) -> str:
+def _encode(user_id: UUID, *, token_type: str, expires_delta: timedelta) -> str:
+    """签发一枚 token；``type`` 用于校验 access / refresh 不被混用。"""
     now = datetime.now(UTC)
-    settings = get_settings()
     payload = {
-        "sub": str(user_id),  # 用户标识
-        "type": token_type,  # token 类型，decode 时校验
-        "iat": now,  # 签发时间
+        "sub": str(user_id),
+        "type": token_type,
+        "iat": now,
         "exp": now + expires_delta,
-        "jti": uuid4().hex,  # 唯一 ID，未来做黑名单/撤销用
+        "jti": uuid4().hex,  # 未来做撤销/黑名单用
     }
-    if scope is not None:
-        payload["scope"] = scope
-
+    settings = get_settings()
     return jwt.encode(
         payload,
         settings.secret_key.get_secret_value(),
@@ -32,38 +31,38 @@ def _create_token(
     )
 
 
-def create_access_token(user_id: UUID, scope: str = "full") -> str:
+def create_access_token(user_id: UUID) -> str:
     settings = get_settings()
-    return _create_token(
-        user_id=user_id,
+    return _encode(
+        user_id,
         token_type="access",
         expires_delta=timedelta(minutes=settings.access_token_expire_minutes),
-        scope=scope,
     )
 
 
 def create_refresh_token(user_id: UUID) -> str:
     settings = get_settings()
-
-    return _create_token(
-        user_id=user_id,
+    return _encode(
+        user_id,
         token_type="refresh",
         expires_delta=timedelta(minutes=settings.refresh_token_expire_minutes),
     )
 
 
 def decode_token(token: str, expected_type: str) -> dict:
+    """校验签名并返回 payload；类型不符抛 ``InvalidTokenError``。"""
     settings = get_settings()
     try:
         payload = jwt.decode(
-            jwt=token,
+            token,
             key=settings.secret_key.get_secret_value(),
             algorithms=[settings.algorithm],
         )
     except InvalidTokenError:
-        logger.warning("decode_failed", reason="jwt decode failed")
+        logger.warning("decode_failed", reason="jwt_decode_failed")
         raise
+
     if payload.get("type") != expected_type:
-        logger.info("decode_failed", expected_type=expected_type)
-        raise InvalidTokenError(f"Expected {expected_type} token")
+        logger.warning("decode_failed", expected_type=expected_type)
+        raise InvalidTokenError(f"expected {expected_type} token")
     return payload
